@@ -5,15 +5,17 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout PR merge commit
+      - name: Checkout PR head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -29,14 +31,20 @@ jobs:
       - name: Generate lockfile
         run: pnpm install --lockfile-only --no-frozen-lockfile
 
-      - name: Upload lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: pnpm-lock-bootstrap
-          path: pnpm-lock.yaml
+      - name: Commit lockfile to Task 1 branch
+        if: github.event.pull_request.head.ref == 'feat/repository-foundation'
+        run: |
+          if git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1 && git diff --quiet -- pnpm-lock.yaml; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "chore: add generated pnpm lockfile"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
-      - name: Run RED contract test
+      - name: Run config contract test
         run: pnpm --filter @fitcoach/config test
