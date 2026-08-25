@@ -1,7 +1,9 @@
 export type QueryFilters = Readonly<Record<string, string>>;
+export type RpcArguments = Readonly<Record<string, unknown>>;
 
 export interface DatabaseClient {
   select<T>(table: string, filters: QueryFilters): Promise<T[]>;
+  rpc<T>(functionName: string, args: RpcArguments): Promise<T>;
 }
 
 export interface SupabaseDatabaseConfig {
@@ -38,6 +40,26 @@ class SupabaseRestClient implements DatabaseClient {
     }
 
     return (await response.json()) as T[];
+  }
+
+  async rpc<T>(functionName: string, args: RpcArguments): Promise<T> {
+    const url = new URL(`/rest/v1/rpc/${functionName}`, this.baseUrl);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        apikey: this.apiKey,
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(args),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Database RPC failed for ${functionName}: HTTP ${response.status}`);
+    }
+
+    return (await response.json()) as T;
   }
 }
 
