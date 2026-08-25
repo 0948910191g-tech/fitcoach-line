@@ -39,16 +39,14 @@ jobs:
       - name: Initialize and start disposable Supabase
         run: |
           supabase init
-          supabase start
+          supabase start >/dev/null
 
-      - name: Export local Supabase credentials
+      - name: Run RLS integration test
         run: |
-          supabase status -o env \
+          eval "$(supabase status -o env \
             --override-name api.url=SUPABASE_TEST_URL \
             --override-name auth.anon_key=SUPABASE_TEST_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
-            --override-name auth.jwt_secret=SUPABASE_TEST_JWT_SECRET \
-            >> "$GITHUB_ENV"
-
-      - name: Run RLS integration test
-        run: pnpm --filter @fitcoach/db test -- repositories.integration.test.ts
+            --override-name auth.jwt_secret=SUPABASE_TEST_JWT_SECRET)"
+          export SUPABASE_TEST_URL SUPABASE_TEST_ANON_KEY SUPABASE_TEST_SERVICE_ROLE_KEY SUPABASE_TEST_JWT_SECRET
+          pnpm --filter @fitcoach/db test -- repositories.integration.test.ts
