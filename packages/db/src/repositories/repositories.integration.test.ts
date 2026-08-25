@@ -106,13 +106,24 @@ describeIntegration('health data repositories RLS', () => {
       expect(selected.status, `${fixture.table} select status`).toBe(200);
       expect(selected.body, `${fixture.table} must be invisible to user A`).toEqual([]);
 
-      const updated = await restRequest<unknown[]>(fixture.table, {
+      const forbiddenUpdatedAt = new Date('2026-08-25T00:00:00.000Z').toISOString();
+      const updated = await restRequest<unknown>(fixture.table, {
         method: 'PATCH',
         query: `id=eq.${fixture.row.id}`,
-        body: JSON.stringify({ updated_at: new Date('2026-08-25T00:00:00.000Z').toISOString() }),
+        body: JSON.stringify({ updated_at: forbiddenUpdatedAt }),
       }, userACredential);
-      expect(updated.status, `${fixture.table} update status`).toBe(200);
-      expect(updated.body, `${fixture.table} must not be writable by user A`).toEqual([]);
+      expect([200, 403], `${fixture.table} update must be denied or filtered`).toContain(updated.status);
+      if (updated.status === 200) {
+        expect(updated.body, `${fixture.table} must not be writable by user A`).toEqual([]);
+      }
+
+      const persisted = await restRequest<Array<{ updated_at: string }>>(fixture.table, {
+        method: 'GET',
+        query: `id=eq.${fixture.row.id}&select=updated_at`,
+      }, serviceCredential);
+      expect(persisted.status, `${fixture.table} verification read`).toBe(200);
+      expect(persisted.body).toHaveLength(1);
+      expect(persisted.body[0]?.updated_at, `${fixture.table} must remain unchanged`).not.toBe(forbiddenUpdatedAt);
     }
   });
 });
