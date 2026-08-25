@@ -41,7 +41,7 @@ jobs:
           supabase init
           supabase start >/dev/null
 
-      - name: Run RLS integration test
+      - name: Run DB integration tests
         run: |
           eval "$(supabase status -o env \
             --override-name api.url=SUPABASE_TEST_URL \
@@ -49,4 +49,4 @@ jobs:
             --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
             --override-name auth.jwt_secret=SUPABASE_TEST_JWT_SECRET)"
           export SUPABASE_TEST_URL SUPABASE_TEST_ANON_KEY SUPABASE_TEST_SERVICE_ROLE_KEY SUPABASE_TEST_JWT_SECRET
-          pnpm --filter @fitcoach/db test -- repositories.integration.test.ts
+          pnpm --filter @fitcoach/db test -- repositories.integration.test.ts line-event-ingestion.integration.test.ts

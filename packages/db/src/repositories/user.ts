@@ -16,4 +16,8 @@ export class UserRepository {
   getById(userId: string): Promise<UserRow | null> {
     return selectOne<UserRow>(this.client, 'users', { id: `eq.${userId}` });
   }
+
+  getByLineUserId(lineUserId: string): Promise<UserRow | null> {
+    return selectOne<UserRow>(this.client, 'users', { line_user_id: `eq.${lineUserId}` });
+  }
 }
