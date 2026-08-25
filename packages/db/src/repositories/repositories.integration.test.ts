@@ -36,7 +36,7 @@ function env(name: (typeof requiredEnv)[number]): string {
   if (!value) {
     throw new Error(`Missing integration environment: ${name}`);
   }
-  return value.replace(/^\"|\"$/g, '');
+  return value.replace(/^"|"$/g, '');
 }
 
 async function restRequest<T>(
