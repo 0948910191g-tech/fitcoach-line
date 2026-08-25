@@ -31,7 +31,7 @@ jobs:
 
       - name: Package local runtime
         run: |
-          tar -czf local-runtime.tar.gz node_modules apps/*/node_modules packages/*/node_modules "$PNPM_HOME"
+          tar -czf local-runtime.tar.gz node_modules apps/*/node_modules packages/*/node_modules "$(dirname "$PNPM_HOME")"
 
       - name: Upload local runtime
         uses: actions/upload-artifact@v4
