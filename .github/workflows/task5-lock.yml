@@ -5,17 +5,15 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   lock:
-    if: github.head_ref == 'build/task5-supabase-lock' && github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'build/task5-supabase-lock'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: build/task5-supabase-lock
       - uses: pnpm/action-setup@v4
         with:
           version: 10.34.5
@@ -28,10 +26,12 @@ jobs:
         run: pnpm --filter @fitcoach/web add --save-exact @supabase/supabase-js@2.112.3 @supabase/ssr@0.12.4
       - name: Verify frozen install
         run: pnpm install --frozen-lockfile
-      - name: Persist generated files on disposable branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/web/package.json pnpm-lock.yaml
-          git commit -m "chore: capture generated task 5 lock"
-          git push origin HEAD:build/task5-supabase-lock
+      - name: Export generated dependency files
+        uses: actions/upload-artifact@v4
+        with:
+          name: task5-supabase-lock
+          path: |
+            apps/web/package.json
+            pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 1
