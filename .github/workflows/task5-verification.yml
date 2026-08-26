@@ -1,0 +1,84 @@
+name: Task 5 Verification
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  playwright-security:
+    if: github.head_ref == 'verify/task5-green'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install disposable Playwright runner
+        run: |
+          pnpm add -Dw --save-exact @playwright/test@1.56.1
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Start web app
+        env:
+          SUPABASE_URL: http://127.0.0.1:9
+          SUPABASE_ANON_KEY: synthetic-public-anon-key
+        run: |
+          pnpm --filter @fitcoach/web exec next dev --hostname 127.0.0.1 --port 3000 >/tmp/fitcoach-next.log 2>&1 &
+          echo $! > /tmp/fitcoach-next.pid
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/onboarding >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/fitcoach-next.log
+          exit 1
+
+      - name: Playwright iPhone-sized viewport
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+        run: pnpm exec playwright test tests/e2e/onboarding.spec.ts --reporter=line
+
+      - name: Security and privacy scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nE 'signInWithIdToken|getIDToken|user_metadata' -- apps packages tests supabase; then
+            echo 'Forbidden auth shortcut found'
+            exit 1
+          fi
+          if git grep -nE '(LINE_CHANNEL_SECRET|LINE_CHANNEL_ACCESS_TOKEN|SUPABASE_SERVICE_ROLE_KEY)=[^[:space:]]+' -- ':!pnpm-lock.yaml'; then
+            echo 'Hard-coded secret assignment found'
+            exit 1
+          fi
+          if git grep -nE 'U[0-9a-fA-F]{32}' -- apps packages tests supabase; then
+            echo 'Real-looking LINE user ID found'
+            exit 1
+          fi
+          if git grep -n 'SUPABASE_SERVICE_ROLE_KEY' -- apps/web; then
+            echo 'service_role reference found in web runtime'
+            exit 1
+          fi
+          if git grep -nE 'console\.(log|warn|error).*([Ww]eight|[Hh]eight|birth|calor|protein|health)' -- apps packages; then
+            echo 'Potential health data logging found'
+            exit 1
+          fi
+          echo 'Security/privacy scan passed'
