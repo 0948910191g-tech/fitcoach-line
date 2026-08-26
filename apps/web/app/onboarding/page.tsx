@@ -3,15 +3,18 @@ import { createSupabaseServerClient } from '../../src/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-export default async function OnboardingPage() {
-  let authenticated = false;
+async function hasAuthenticatedUser(): Promise<boolean> {
   try {
     const supabase = await createSupabaseServerClient();
     const { data } = await supabase.auth.getUser();
-    authenticated = Boolean(data.user);
+    return Boolean(data.user);
   } catch {
-    authenticated = false;
+    return false;
   }
+}
+
+export default async function OnboardingPage() {
+  const authenticated = await hasAuthenticatedUser();
 
   return (
     <main
