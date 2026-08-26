@@ -11,7 +11,7 @@ jobs:
   playwright-security:
     if: github.head_ref == 'verify/task5-green'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,22 +31,6 @@ jobs:
       - name: Frozen install
         run: pnpm install --frozen-lockfile
 
-      - name: Setup disposable Supabase CLI
-        uses: supabase/setup-cli@v2
-        with:
-          version: latest
-          github-token: ${{ github.token }}
-
-      - name: Start disposable Supabase
-        run: |
-          supabase init
-          supabase start >/dev/null
-          eval "$(supabase status -o env \
-            --override-name api.url=SUPABASE_TEST_URL \
-            --override-name auth.anon_key=SUPABASE_TEST_ANON_KEY)"
-          echo "SUPABASE_TEST_URL=$SUPABASE_TEST_URL" >> "$GITHUB_ENV"
-          echo "SUPABASE_TEST_ANON_KEY=$SUPABASE_TEST_ANON_KEY" >> "$GITHUB_ENV"
-
       - name: Install disposable Playwright runner
         run: |
           pnpm add -Dw --save-exact @playwright/test@1.56.1
@@ -54,8 +38,8 @@ jobs:
 
       - name: Start web app
         env:
-          SUPABASE_URL: ${{ env.SUPABASE_TEST_URL }}
-          SUPABASE_ANON_KEY: ${{ env.SUPABASE_TEST_ANON_KEY }}
+          SUPABASE_URL: http://127.0.0.1:9
+          SUPABASE_ANON_KEY: synthetic-public-anon-key
         run: |
           pnpm --filter @fitcoach/web exec next dev --hostname 127.0.0.1 --port 3000 >/tmp/fitcoach-next.log 2>&1 &
           echo $! > /tmp/fitcoach-next.pid
