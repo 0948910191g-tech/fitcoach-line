@@ -76,7 +76,7 @@ type CreateOnboardingService = (dependencies: {
 };
 
 async function loadModule(path: string): Promise<UnknownModule> {
-  return import(path).catch(() => ({}));
+  return (await import(path)) as UnknownModule;
 }
 
 function requireFunction<T>(subject: UnknownModule, name: string): T {
