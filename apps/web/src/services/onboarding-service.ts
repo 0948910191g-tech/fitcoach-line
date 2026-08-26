@@ -197,7 +197,10 @@ export function createOnboardingService(dependencies: {
       }
 
       assertOnboardingInput(input.onboarding);
-      const preview = calculateOnboardingPreview(input.onboarding, { asOfDate: input.asOfDate });
+      const preview = calculateOnboardingPreview(
+        input.onboarding,
+        input.asOfDate ? { asOfDate: input.asOfDate } : {},
+      );
 
       await dependencies.saveConfirmedOnboarding({
         userId: input.userId,
