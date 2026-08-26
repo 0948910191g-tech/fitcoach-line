@@ -49,7 +49,7 @@ test('onboarding is mobile-first, calculates a preview, and requires explicit co
   await page.getByLabel('น้ำหนักปัจจุบัน (กก.)').fill('60');
   await page.getByLabel('ระดับกิจกรรม').selectOption('moderate');
   await page.getByLabel('ประสบการณ์ฝึก').selectOption('beginner');
-  await page.getByLabel('เป้าหมาย').selectOption('maintain');
+  await page.getByLabel('เป้าหมาย', { exact: true }).selectOption('maintain');
   await page.getByLabel('น้ำหนักเป้าหมาย (กก.)').fill('60');
   await page.getByLabel('จำนวนวันฝึกต่อสัปดาห์ (วัน)').selectOption('3');
 
