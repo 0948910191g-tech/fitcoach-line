@@ -70,4 +70,9 @@ test('onboarding is mobile-first, calculates a preview, and requires explicit co
   await expect(save).toBeDisabled();
   await confirm.check();
   await expect(save).toBeEnabled();
+
+  await save.click();
+  await expect(page.getByRole('alert')).toHaveText('กรุณาเข้าสู่ระบบด้วย LINE ก่อนบันทึกข้อมูล');
+  expect(requests).toHaveLength(1);
+  expect(requests.some((request) => (request as Record<string, unknown>).action === 'save')).toBe(false);
 });
