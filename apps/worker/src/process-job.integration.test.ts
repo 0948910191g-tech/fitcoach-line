@@ -112,6 +112,29 @@ async function claim(
   return rows[0] ?? null;
 }
 
+async function beginAttempt(jobId: string, leaseToken: string): Promise<number | null> {
+  return rpc<number | null>('begin_ai_job_attempt_v1', {
+    p_job_id: jobId,
+    p_lease_token: leaseToken,
+  });
+}
+
+async function finishFailure(
+  jobId: string,
+  leaseToken: string,
+  outcome: 'retry_wait' | 'failed' | 'dead_letter',
+  errorCode: string,
+  nextAttemptAt: string | null = null,
+): Promise<boolean> {
+  return rpc<boolean>('fail_ai_job_attempt_v1', {
+    p_job_id: jobId,
+    p_lease_token: leaseToken,
+    p_outcome: outcome,
+    p_error_code: errorCode,
+    p_next_attempt_at: nextAttemptAt,
+  });
+}
+
 async function complete(jobId: string, leaseToken: string, marker: string): Promise<boolean> {
   return rpc<boolean>('complete_ai_job_v1', {
     p_job_id: jobId,
@@ -229,5 +252,75 @@ describeIntegration('durable AI worker lease', () => {
         dailyLimit: 1,
       }),
     ).toBeNull();
+  });
+
+  it('counts provider attempts before execution and persists exponential retry states through attempt three', async () => {
+    const userId = await createSyntheticUser();
+    const jobId = await createQueuedJob(userId, 'retry-durable');
+
+    const first = await claim(`retry-a-${randomUUID()}`);
+    expect(first?.attempts).toBe(0);
+    if (!first) throw new Error('Expected first claim');
+    expect(await beginAttempt(jobId, first.lease_token)).toBe(1);
+    expect(
+      await finishFailure(
+        jobId,
+        first.lease_token,
+        'retry_wait',
+        'provider_temporary_failure',
+        new Date(Date.now() + 20).toISOString(),
+      ),
+    ).toBe(true);
+
+    await sleep(40);
+    const second = await claim(`retry-b-${randomUUID()}`);
+    expect(second?.attempts).toBe(1);
+    if (!second) throw new Error('Expected second claim');
+    expect(await beginAttempt(jobId, second.lease_token)).toBe(2);
+    expect(
+      await finishFailure(
+        jobId,
+        second.lease_token,
+        'retry_wait',
+        'provider_temporary_failure',
+        new Date(Date.now() + 40).toISOString(),
+      ),
+    ).toBe(true);
+
+    await sleep(60);
+    const third = await claim(`retry-c-${randomUUID()}`);
+    expect(third?.attempts).toBe(2);
+    if (!third) throw new Error('Expected third claim');
+    expect(await beginAttempt(jobId, third.lease_token)).toBe(3);
+    expect(
+      await finishFailure(jobId, third.lease_token, 'dead_letter', 'provider_temporary_failure'),
+    ).toBe(true);
+
+    const stored = await getJob(jobId);
+    expect(stored.status).toBe('dead_letter');
+    expect(stored.attempts).toBe(3);
+    expect(stored.error_code).toBe('provider_temporary_failure');
+    expect(stored.finished_at).toBeTruthy();
+    expect(await claim(`retry-d-${randomUUID()}`)).toBeNull();
+  });
+
+  it('makes permanent failure terminal after one provider attempt without retry', async () => {
+    const userId = await createSyntheticUser();
+    const jobId = await createQueuedJob(userId, 'permanent');
+    const owner = await claim(`permanent-${randomUUID()}`);
+    if (!owner) throw new Error('Expected permanent-error claim');
+
+    expect(await beginAttempt(jobId, owner.lease_token)).toBe(1);
+    expect(
+      await finishFailure(jobId, owner.lease_token, 'failed', 'schema_mismatch'),
+    ).toBe(true);
+
+    const stored = await getJob(jobId);
+    expect(stored.status).toBe('failed');
+    expect(stored.attempts).toBe(1);
+    expect(stored.error_code).toBe('schema_mismatch');
+    expect(stored.next_attempt_at).toBeNull();
+    expect(stored.finished_at).toBeTruthy();
+    expect(await claim(`permanent-retry-${randomUUID()}`)).toBeNull();
   });
 });
