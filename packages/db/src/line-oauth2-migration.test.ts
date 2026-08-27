@@ -14,5 +14,12 @@ describe('LINE OAuth2 identity migration', () => {
     expect(sql).toContain("i.provider = 'custom:line-oauth'");
     expect(sql).toContain("trusted custom:line-oauth identity required");
     expect(sql).not.toContain("i.provider = 'custom:line';");
+    expect(sql).not.toMatch(/\b(drop\s+table|truncate(?:\s+table)?|delete\s+from)\b/i);
+    expect(sql).toContain(
+      'revoke all on function public.link_line_identity_v1() from public, anon;',
+    );
+    expect(sql).toContain(
+      'grant execute on function public.link_line_identity_v1() to authenticated;',
+    );
   });
 });

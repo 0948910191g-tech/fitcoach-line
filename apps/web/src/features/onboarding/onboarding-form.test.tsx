@@ -8,7 +8,8 @@ const OTHER_AUTH_USER_ID = '00000000-0000-4000-8000-000000000502';
 const VERIFIED_LINE_SUBJECT = 'U_SYNTHETIC_VERIFIED_SUBJECT';
 const OTHER_LINE_SUBJECT = 'U_SYNTHETIC_OTHER_SUBJECT';
 const CALLBACK_URL = 'https://fitcoach.invalid/api/auth/line/exchange';
-const OAUTH_URL = 'https://supabase.invalid/auth/v1/authorize?provider=custom%3Aline';
+const OAUTH_URL =
+  'https://supabase.invalid/auth/v1/authorize?provider=custom%3Aline-oauth';
 
 const VALID_ONBOARDING = {
   sex: 'female',

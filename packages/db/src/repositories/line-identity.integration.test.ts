@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 const execFile = promisify(execFileCallback);
 
@@ -173,11 +173,54 @@ async function readAppUser(appUserId: string): Promise<Array<{ auth_user_id: str
 }
 
 describeIntegration('trusted LINE identity bridge', () => {
+  const createdAuthUserIds = new Set<string>();
+  const createdAppUserIds = new Set<string>();
+
+  afterEach(async () => {
+    const serviceRole = env('SUPABASE_TEST_SERVICE_ROLE_KEY');
+    const cleanupFailures: string[] = [];
+
+    for (const appUserId of createdAppUserIds) {
+      try {
+        const result = await request<unknown[]>(
+          `/rest/v1/users?id=eq.${appUserId}`,
+          { method: 'DELETE' },
+          { apiKey: serviceRole, bearer: serviceRole },
+        );
+        if (![200, 204].includes(result.status)) cleanupFailures.push('app user');
+      } catch {
+        cleanupFailures.push('app user');
+      }
+    }
+
+    for (const authUserId of createdAuthUserIds) {
+      try {
+        const result = await request<unknown>(
+          `/auth/v1/admin/users/${authUserId}`,
+          { method: 'DELETE' },
+          { apiKey: serviceRole, bearer: serviceRole },
+        );
+        if (![200, 204].includes(result.status)) cleanupFailures.push('auth user');
+      } catch {
+        cleanupFailures.push('auth user');
+      }
+    }
+
+    createdAuthUserIds.clear();
+    createdAppUserIds.clear();
+
+    if (cleanupFailures.length > 0) {
+      throw new Error(`Integration cleanup failed for ${cleanupFailures.length} resource(s)`);
+    }
+  });
+
   it('maps auth.uid through auth.identities to the matching app user', async () => {
     const authUserId = randomUUID();
     const appUserId = randomUUID();
     const lineSubject = `U_SYNTHETIC_TRUSTED_${appUserId}`;
 
+    createdAuthUserIds.add(authUserId);
+    createdAppUserIds.add(appUserId);
     await createAuthUser(authUserId, `trusted-${authUserId}`);
     await createAppUser(appUserId, lineSubject);
     await insertSyntheticIdentity(authUserId, 'custom:line-oauth', lineSubject);
@@ -202,6 +245,8 @@ describeIntegration('trusted LINE identity bridge', () => {
     const appUserId = randomUUID();
     const lineSubject = `U_SYNTHETIC_LEGACY_${appUserId}`;
 
+    createdAuthUserIds.add(authUserId);
+    createdAppUserIds.add(appUserId);
     await createAuthUser(authUserId, `legacy-${authUserId}`);
     await createAppUser(appUserId, lineSubject);
     await insertSyntheticIdentity(authUserId, 'custom:line', lineSubject);
@@ -218,6 +263,9 @@ describeIntegration('trusted LINE identity bridge', () => {
     const appUserId = randomUUID();
     const lineSubject = `U_SYNTHETIC_OWNED_${appUserId}`;
 
+    createdAuthUserIds.add(authUserId);
+    createdAuthUserIds.add(existingAuthUserId);
+    createdAppUserIds.add(appUserId);
     await createAuthUser(authUserId, `attacker-${authUserId}`);
     await createAuthUser(existingAuthUserId, `owner-${existingAuthUserId}`);
     await createAppUser(appUserId, lineSubject, existingAuthUserId);

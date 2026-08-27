@@ -49,7 +49,10 @@ jobs:
             --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
             --override-name auth.jwt_secret=SUPABASE_TEST_JWT_SECRET)"
           export SUPABASE_TEST_URL SUPABASE_TEST_ANON_KEY SUPABASE_TEST_SERVICE_ROLE_KEY SUPABASE_TEST_JWT_SECRET
+          export SUPABASE_TEST_DB_CONTAINER="$(docker ps --filter 'name=supabase_db_' --format '{{.Names}}' | head -n 1)"
+          test -n "$SUPABASE_TEST_DB_CONTAINER"
           pnpm --filter @fitcoach/db test -- \
             repositories.integration.test.ts \
             line-event-ingestion.integration.test.ts \
-            onboarding-rls.integration.test.ts
+            onboarding-rls.integration.test.ts \
+            line-identity.integration.test.ts
