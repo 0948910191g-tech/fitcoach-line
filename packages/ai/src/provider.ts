@@ -1,3 +1,7 @@
+import type { CoachReply, DailyReport, WeeklyReport } from './schemas/coach';
+import type { FoodAnalysis } from './schemas/food';
+import type { WorkoutAnalysis } from './schemas/workout';
+
 export interface ProviderImageInput {
   storagePath: string;
   mediaType?: 'image/jpeg' | 'image/png' | 'image/webp';
@@ -35,16 +39,16 @@ export interface WeeklyReportInput {
 }
 
 /**
- * Provider output is deliberately untrusted JSON text.
- * Feature/business code must consume it through createAIRouter(), which
- * performs runtime Zod validation before returning structured data.
+ * Providers expose structured results at the TypeScript boundary. Their runtime
+ * output is still untrusted and must pass createAIRouter() Zod validation before
+ * feature/business code consumes it.
  */
 export interface AIProvider {
-  analyzeFood(input: AnalyzeFoodInput): Promise<string>;
-  parseWorkout(input: ParseWorkoutInput): Promise<string>;
-  generateCoachReply(input: CoachInput): Promise<string>;
-  generateDailyReport(input: DailyReportInput): Promise<string>;
-  generateWeeklyReport(input: WeeklyReportInput): Promise<string>;
+  analyzeFood(input: AnalyzeFoodInput): Promise<FoodAnalysis>;
+  parseWorkout(input: ParseWorkoutInput): Promise<WorkoutAnalysis>;
+  generateCoachReply(input: CoachInput): Promise<CoachReply>;
+  generateDailyReport(input: DailyReportInput): Promise<DailyReport>;
+  generateWeeklyReport(input: WeeklyReportInput): Promise<WeeklyReport>;
 }
 
 export interface AIProviderErrorOptions {
