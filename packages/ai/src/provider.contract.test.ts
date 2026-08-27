@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { AIProvider } from './provider';
+import type { CoachReply, DailyReport, WeeklyReport } from './schemas/coach';
+import type { FoodAnalysis } from './schemas/food';
+import type { WorkoutAnalysis } from './schemas/workout';
 
 const VALID_FOOD_JSON = JSON.stringify({
   confidence: 0.92,
@@ -118,6 +122,14 @@ async function loadSubject() {
 }
 
 describe('AIProvider contract', () => {
+  it('matches the exact structured return types from the handoff', () => {
+    expectTypeOf<ReturnType<AIProvider['analyzeFood']>>().toEqualTypeOf<Promise<FoodAnalysis>>();
+    expectTypeOf<ReturnType<AIProvider['parseWorkout']>>().toEqualTypeOf<Promise<WorkoutAnalysis>>();
+    expectTypeOf<ReturnType<AIProvider['generateCoachReply']>>().toEqualTypeOf<Promise<CoachReply>>();
+    expectTypeOf<ReturnType<AIProvider['generateDailyReport']>>().toEqualTypeOf<Promise<DailyReport>>();
+    expectTypeOf<ReturnType<AIProvider['generateWeeklyReport']>>().toEqualTypeOf<Promise<WeeklyReport>>();
+  });
+
   it('accepts a valid structured provider result through runtime validation', async () => {
     const subject = await loadSubject();
     if (!subject) return;
