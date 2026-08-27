@@ -32,13 +32,18 @@ export class AIOutputValidationError extends Error {
   }
 }
 
-function parseValidatedOutput<T>(raw: string, schema: ZodType<T>): T {
-  let parsed: unknown;
+function parseValidatedOutput<T>(raw: unknown, schema: ZodType<T>): T {
+  let parsed = raw;
 
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch (error) {
-    throw new AIOutputValidationError('AI provider returned invalid JSON', 'invalid_json', error);
+  // Static provider contracts return structured values, but a real provider
+  // adapter can still violate that contract at runtime. Keep malformed text
+  // distinguishable from a structurally invalid JSON value for worker policy.
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch (error) {
+      throw new AIOutputValidationError('AI provider returned invalid JSON', 'invalid_json', error);
+    }
   }
 
   const result = schema.safeParse(parsed);
