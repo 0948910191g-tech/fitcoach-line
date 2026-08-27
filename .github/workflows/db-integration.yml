@@ -41,7 +41,7 @@ jobs:
           test -f supabase/config.toml
           supabase start >/dev/null
 
-      - name: Run DB integration tests
+      - name: Run DB and worker integration tests
         run: |
           eval "$(supabase status -o env \
             --override-name api.url=SUPABASE_TEST_URL \
@@ -56,3 +56,4 @@ jobs:
             line-event-ingestion.integration.test.ts \
             onboarding-rls.integration.test.ts \
             line-identity.integration.test.ts
+          pnpm --filter @fitcoach/worker test -- process-job.integration.test.ts

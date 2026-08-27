@@ -1,0 +1,218 @@
+import { randomUUID } from 'node:crypto';
+import { describe, expect, it } from 'vitest';
+
+const requiredEnv = [
+  'SUPABASE_TEST_URL',
+  'SUPABASE_TEST_SERVICE_ROLE_KEY',
+] as const;
+const hasIntegrationEnv = requiredEnv.every((key) => Boolean(process.env[key]));
+const describeIntegration = hasIntegrationEnv ? describe : describe.skip;
+
+function env(name: (typeof requiredEnv)[number]): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing integration environment: ${name}`);
+  return value.replace(/^"|"$/g, '');
+}
+
+function serviceHeaders(): Record<string, string> {
+  const serviceRole = env('SUPABASE_TEST_SERVICE_ROLE_KEY');
+  return {
+    apikey: serviceRole,
+    Authorization: `Bearer ${serviceRole}`,
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+  };
+}
+
+async function rest<T>(path: string, init: RequestInit = {}): Promise<{ status: number; body: T }> {
+  const response = await fetch(new URL(path, env('SUPABASE_TEST_URL')), {
+    ...init,
+    headers: { ...serviceHeaders(), ...init.headers },
+  });
+  const text = await response.text();
+  return { status: response.status, body: (text ? JSON.parse(text) : null) as T };
+}
+
+async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
+  const result = await rest<T>(`/rest/v1/rpc/${name}`, {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error(`RPC ${name} failed with HTTP ${result.status}: ${JSON.stringify(result.body)}`);
+  }
+  return result.body;
+}
+
+async function createSyntheticUser(): Promise<string> {
+  const userId = randomUUID();
+  const result = await rest<unknown[]>('/rest/v1/users', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: userId,
+      line_user_id: `U_TASK6_${userId.replaceAll('-', '')}`,
+      status: 'active',
+    }),
+  });
+  expect(result.status).toBe(201);
+  return userId;
+}
+
+async function createQueuedJob(userId: string, suffix = randomUUID()): Promise<string> {
+  const result = await rest<Array<{ id: string }>>('/rest/v1/ai_jobs', {
+    method: 'POST',
+    body: JSON.stringify({
+      user_id: userId,
+      task_type: 'line_text_ingestion',
+      provider: 'fake',
+      status: 'queued',
+      input_ref: `synthetic-task6:${suffix}`,
+    }),
+  });
+  expect(result.status).toBe(201);
+  const row = result.body[0];
+  if (!row) throw new Error('Synthetic job insert returned no row');
+  return row.id;
+}
+
+interface ClaimedJob {
+  job_id: string;
+  user_id: string;
+  task_type: string;
+  provider: string;
+  input_ref: string | null;
+  attempts: number;
+  lease_token: string;
+  lease_expires_at: string;
+  quota_used: number;
+}
+
+async function claim(
+  workerId: string,
+  options: { leaseSeconds?: number; dailyLimit?: number; concurrencyLimit?: number } = {},
+): Promise<ClaimedJob | null> {
+  const rows = await rpc<ClaimedJob[]>('claim_ai_job_v1', {
+    p_worker_id: workerId,
+    p_lease_seconds: options.leaseSeconds ?? 30,
+    p_daily_limit: options.dailyLimit ?? 50,
+    p_concurrency_limit: options.concurrencyLimit ?? 1,
+  });
+  return rows[0] ?? null;
+}
+
+async function complete(jobId: string, leaseToken: string, marker: string): Promise<boolean> {
+  return rpc<boolean>('complete_ai_job_v1', {
+    p_job_id: jobId,
+    p_lease_token: leaseToken,
+    p_output_json: { marker },
+  });
+}
+
+async function getJob(jobId: string): Promise<Record<string, unknown>> {
+  const result = await rest<Record<string, unknown>[]>(
+    `/rest/v1/ai_jobs?id=eq.${encodeURIComponent(jobId)}&select=*`,
+  );
+  expect(result.status).toBe(200);
+  const row = result.body[0];
+  if (!row) throw new Error(`Job ${jobId} not found`);
+  return row;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describeIntegration('durable AI worker lease', () => {
+  it('atomically gives one queued job to only one of two concurrent workers', async () => {
+    const userId = await createSyntheticUser();
+    const jobId = await createQueuedJob(userId);
+
+    const [first, second] = await Promise.all([
+      claim(`worker-a-${randomUUID()}`),
+      claim(`worker-b-${randomUUID()}`),
+    ]);
+    const claims = [first, second].filter((value): value is ClaimedJob => value !== null);
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]?.job_id).toBe(jobId);
+    expect(claims[0]?.lease_token).toBeTruthy();
+  });
+
+  it('recovers the same job after its lease expires, simulating worker restart', async () => {
+    const userId = await createSyntheticUser();
+    const jobId = await createQueuedJob(userId);
+
+    const crashedWorker = await claim(`crashed-${randomUUID()}`, { leaseSeconds: 1 });
+    expect(crashedWorker?.job_id).toBe(jobId);
+
+    await sleep(1_150);
+
+    const restartedWorker = await claim(`restarted-${randomUUID()}`, { leaseSeconds: 30 });
+    expect(restartedWorker?.job_id).toBe(jobId);
+    expect(restartedWorker?.lease_token).not.toBe(crashedWorker?.lease_token);
+  });
+
+  it('rejects stale completion after lease loss and creates one terminal result only', async () => {
+    const userId = await createSyntheticUser();
+    const jobId = await createQueuedJob(userId);
+
+    const stale = await claim(`stale-${randomUUID()}`, { leaseSeconds: 1 });
+    expect(stale).not.toBeNull();
+    await sleep(1_150);
+
+    const owner = await claim(`owner-${randomUUID()}`, { leaseSeconds: 30 });
+    expect(owner?.job_id).toBe(jobId);
+    if (!stale || !owner) throw new Error('Expected both lease generations');
+
+    expect(await complete(jobId, stale.lease_token, 'stale-result')).toBe(false);
+    expect(await complete(jobId, owner.lease_token, 'confirmed-result')).toBe(true);
+    expect(await complete(jobId, owner.lease_token, 'duplicate-result')).toBe(false);
+
+    const stored = await getJob(jobId);
+    expect(stored.status).toBe('completed');
+    expect(stored.output_json).toEqual({ marker: 'confirmed-result' });
+  });
+
+  it('enforces Owner Alpha concurrency one until the active lease is released', async () => {
+    const userId = await createSyntheticUser();
+    const firstJobId = await createQueuedJob(userId, 'first');
+    const secondJobId = await createQueuedJob(userId, 'second');
+
+    const first = await claim(`worker-1-${randomUUID()}`);
+    expect(first?.job_id).toBe(firstJobId);
+    expect(await claim(`worker-2-${randomUUID()}`)).toBeNull();
+    if (!first) throw new Error('Expected first lease');
+
+    expect(await complete(first.job_id, first.lease_token, 'first-done')).toBe(true);
+    const second = await claim(`worker-2-${randomUUID()}`);
+    expect(second?.job_id).toBe(secondJobId);
+  });
+
+  it('counts a new job against daily quota once, not again when an expired lease is recovered', async () => {
+    const userId = await createSyntheticUser();
+    const firstJobId = await createQueuedJob(userId, 'quota-first');
+
+    const firstLease = await claim(`quota-a-${randomUUID()}`, {
+      leaseSeconds: 1,
+      dailyLimit: 1,
+    });
+    expect(firstLease?.job_id).toBe(firstJobId);
+    expect(firstLease?.quota_used).toBe(1);
+
+    await sleep(1_150);
+    const recovered = await claim(`quota-b-${randomUUID()}`, {
+      leaseSeconds: 30,
+      dailyLimit: 1,
+    });
+    expect(recovered?.job_id).toBe(firstJobId);
+    expect(recovered?.quota_used).toBe(1);
+    if (!recovered) throw new Error('Expected recovered lease');
+    expect(await complete(firstJobId, recovered.lease_token, 'quota-first-done')).toBe(true);
+
+    await createQueuedJob(userId, 'quota-blocked');
+    expect(
+      await claim(`quota-c-${randomUUID()}`, {
+        dailyLimit: 1,
+      }),
+    ).toBeNull();
+  });
+});
