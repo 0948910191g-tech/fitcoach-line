@@ -1,10 +1,17 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { AIProvider } from './provider';
-import type { CoachReply, DailyReport, WeeklyReport } from './schemas/coach';
-import type { FoodAnalysis } from './schemas/food';
-import type { WorkoutAnalysis } from './schemas/workout';
+import {
+  coachReplySchema,
+  dailyReportSchema,
+  weeklyReportSchema,
+  type CoachReply,
+  type DailyReport,
+  type WeeklyReport,
+} from './schemas/coach';
+import { foodAnalysisSchema, type FoodAnalysis } from './schemas/food';
+import { workoutAnalysisSchema, type WorkoutAnalysis } from './schemas/workout';
 
-const VALID_FOOD_JSON = JSON.stringify({
+const VALID_FOOD = foodAnalysisSchema.parse({
   confidence: 0.92,
   assumptions: ['synthetic fixture assumes one standard serving'],
   normalizedUnits: {
@@ -38,61 +45,56 @@ const VALID_FOOD_JSON = JSON.stringify({
   },
 });
 
-type ProviderOverrides = Partial<{
-  analyzeFood: () => Promise<string>;
-  parseWorkout: () => Promise<string>;
-  generateCoachReply: () => Promise<string>;
-  generateDailyReport: () => Promise<string>;
-  generateWeeklyReport: () => Promise<string>;
-}>;
+const VALID_COACH = coachReplySchema.parse({
+  confidence: 0.9,
+  assumptions: ['synthetic fixture'],
+  normalizedUnits: { energy: 'kcal', protein: 'g', weight: 'kg' },
+  message: 'Synthetic coaching reply',
+  factsUsed: ['synthetic-fact'],
+  missingData: [],
+});
 
-function fakeProvider(overrides: ProviderOverrides = {}) {
-  const validCoachJson = JSON.stringify({
-    confidence: 0.9,
-    assumptions: ['synthetic fixture'],
-    normalizedUnits: { energy: 'kcal', protein: 'g', weight: 'kg' },
-    message: 'Synthetic coaching reply',
-    factsUsed: ['synthetic-fact'],
-    missingData: [],
-  });
-  const validWorkoutJson = JSON.stringify({
-    confidence: 0.9,
-    assumptions: ['synthetic fixture'],
-    normalizedUnits: { weight: 'kg', duration: 's', distance: 'm', energy: 'kcal' },
-    mode: 'strength',
-    exercises: [
-      {
-        name: 'Bench Press',
-        sets: [{ reps: 10, weightKg: 40, rpe: 8 }],
-      },
-    ],
-    estimatedEnergyKcal: { min: 100, max: 150 },
-  });
-  const validDailyReportJson = JSON.stringify({
-    confidence: 0.88,
-    assumptions: ['synthetic fixture'],
-    normalizedUnits: { energy: 'kcal', protein: 'g', weight: 'kg' },
-    summary: 'Synthetic daily report',
-    factsUsed: ['synthetic-fact'],
-    missingData: [],
-    nextActions: ['Synthetic next action'],
-  });
-  const validWeeklyReportJson = JSON.stringify({
-    confidence: 0.86,
-    assumptions: ['synthetic fixture'],
-    normalizedUnits: { energy: 'kcal', protein: 'g', weight: 'kg' },
-    summary: 'Synthetic weekly report',
-    factsUsed: ['synthetic-fact'],
-    missingData: [],
-    nextActions: ['Synthetic next action'],
-  });
+const VALID_WORKOUT = workoutAnalysisSchema.parse({
+  confidence: 0.9,
+  assumptions: ['synthetic fixture'],
+  normalizedUnits: { weight: 'kg', duration: 's', distance: 'm', energy: 'kcal' },
+  mode: 'strength',
+  exercises: [
+    {
+      name: 'Bench Press',
+      sets: [{ reps: 10, weightKg: 40, rpe: 8 }],
+    },
+  ],
+  estimatedEnergyKcal: { min: 100, max: 150 },
+});
 
+const VALID_DAILY_REPORT = dailyReportSchema.parse({
+  confidence: 0.88,
+  assumptions: ['synthetic fixture'],
+  normalizedUnits: { energy: 'kcal', protein: 'g', weight: 'kg' },
+  summary: 'Synthetic daily report',
+  factsUsed: ['synthetic-fact'],
+  missingData: [],
+  nextActions: ['Synthetic next action'],
+});
+
+const VALID_WEEKLY_REPORT = weeklyReportSchema.parse({
+  confidence: 0.86,
+  assumptions: ['synthetic fixture'],
+  normalizedUnits: { energy: 'kcal', protein: 'g', weight: 'kg' },
+  summary: 'Synthetic weekly report',
+  factsUsed: ['synthetic-fact'],
+  missingData: [],
+  nextActions: ['Synthetic next action'],
+});
+
+function fakeProvider(overrides: Partial<AIProvider> = {}): AIProvider {
   return {
-    analyzeFood: overrides.analyzeFood ?? (async () => VALID_FOOD_JSON),
-    parseWorkout: overrides.parseWorkout ?? (async () => validWorkoutJson),
-    generateCoachReply: overrides.generateCoachReply ?? (async () => validCoachJson),
-    generateDailyReport: overrides.generateDailyReport ?? (async () => validDailyReportJson),
-    generateWeeklyReport: overrides.generateWeeklyReport ?? (async () => validWeeklyReportJson),
+    analyzeFood: overrides.analyzeFood ?? (async () => VALID_FOOD),
+    parseWorkout: overrides.parseWorkout ?? (async () => VALID_WORKOUT),
+    generateCoachReply: overrides.generateCoachReply ?? (async () => VALID_COACH),
+    generateDailyReport: overrides.generateDailyReport ?? (async () => VALID_DAILY_REPORT),
+    generateWeeklyReport: overrides.generateWeeklyReport ?? (async () => VALID_WEEKLY_REPORT),
   };
 }
 
@@ -148,7 +150,9 @@ describe('AIProvider contract', () => {
     if (!subject) return;
 
     const router = subject.createAIRouter(
-      fakeProvider({ analyzeFood: async () => '{ definitely-not-json' }),
+      fakeProvider({
+        analyzeFood: async () => '{ definitely-not-json' as unknown as FoodAnalysis,
+      }),
     );
 
     await expect(router.analyzeFood({ text: 'synthetic meal' })).rejects.toMatchObject({
@@ -165,13 +169,13 @@ describe('AIProvider contract', () => {
     const router = subject.createAIRouter(
       fakeProvider({
         analyzeFood: async () =>
-          JSON.stringify({
+          ({
             confidence: 4,
             assumptions: [],
             normalizedUnits: { energy: 'calories-ish' },
             items: [],
             totals: { caloriesKcal: -1 },
-          }),
+          }) as unknown as FoodAnalysis,
       }),
     );
 
