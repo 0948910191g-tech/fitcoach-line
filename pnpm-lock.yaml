@@ -60,7 +60,11 @@ importers:
 
   apps/worker: {}
 
-  packages/ai: {}
+  packages/ai:
+    dependencies:
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/config:
     dependencies:
