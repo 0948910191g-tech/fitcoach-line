@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 type RuntimeProcess = { env: Readonly<Record<string, string | undefined>> };
 const runtimeProcess = (globalThis as typeof globalThis & { process?: RuntimeProcess }).process;
 const runtimeEnv = runtimeProcess?.env ?? {};
-const randomUUID = () => crypto.randomUUID();
+const randomUUID: () => string = () => crypto.randomUUID();
 
 const requiredEnv = [
   'SUPABASE_TEST_URL',
@@ -49,6 +49,13 @@ async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
   return result.body;
 }
 
+async function clearAIJobs(): Promise<void> {
+  const result = await rest<unknown[]>('/rest/v1/ai_jobs?id=not.is.null', {
+    method: 'DELETE',
+  });
+  expect(result.status).toBe(200);
+}
+
 async function createSyntheticUser(): Promise<string> {
   const userId = randomUUID();
   const result = await rest<unknown[]>('/rest/v1/users', {
@@ -63,7 +70,7 @@ async function createSyntheticUser(): Promise<string> {
   return userId;
 }
 
-async function createQueuedJob(userId: string, suffix = randomUUID()): Promise<string> {
+async function createQueuedJob(userId: string, suffix: string = randomUUID()): Promise<string> {
   const result = await rest<Array<{ id: string }>>('/rest/v1/ai_jobs', {
     method: 'POST',
     body: JSON.stringify({
@@ -126,6 +133,10 @@ async function getJob(jobId: string): Promise<Record<string, unknown>> {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describeIntegration('durable AI worker lease', () => {
+  beforeEach(async () => {
+    await clearAIJobs();
+  });
+
   it('atomically gives one queued job to only one of two concurrent workers', async () => {
     const userId = await createSyntheticUser();
     const jobId = await createQueuedJob(userId);
