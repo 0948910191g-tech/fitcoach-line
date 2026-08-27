@@ -1,15 +1,19 @@
-import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+
+type RuntimeProcess = { env: Readonly<Record<string, string | undefined>> };
+const runtimeProcess = (globalThis as typeof globalThis & { process?: RuntimeProcess }).process;
+const runtimeEnv = runtimeProcess?.env ?? {};
+const randomUUID = () => crypto.randomUUID();
 
 const requiredEnv = [
   'SUPABASE_TEST_URL',
   'SUPABASE_TEST_SERVICE_ROLE_KEY',
 ] as const;
-const hasIntegrationEnv = requiredEnv.every((key) => Boolean(process.env[key]));
+const hasIntegrationEnv = requiredEnv.every((key) => Boolean(runtimeEnv[key]));
 const describeIntegration = hasIntegrationEnv ? describe : describe.skip;
 
 function env(name: (typeof requiredEnv)[number]): string {
-  const value = process.env[name];
+  const value = runtimeEnv[name];
   if (!value) throw new Error(`Missing integration environment: ${name}`);
   return value.replace(/^"|"$/g, '');
 }
