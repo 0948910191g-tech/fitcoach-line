@@ -20,7 +20,7 @@ type TrustedLineLink = {
 type LineAuthClient = {
   auth: {
     signInWithOAuth(input: {
-      provider: 'custom:line';
+      provider: 'custom:line-oauth';
       options: { redirectTo: string; scopes: 'openid profile' };
     }): Promise<{ data: { url: string | null }; error: AuthError }>;
     exchangeCodeForSession(code: string): Promise<{ error: AuthError }>;
@@ -54,7 +54,7 @@ function isTrustedLineLink(link: TrustedLineLink | null, authUserId: string): li
     link &&
       link.user_id &&
       link.auth_user_id === authUserId &&
-      link.provider === 'custom:line' &&
+      link.provider === 'custom:line-oauth' &&
       link.provider_id &&
       link.line_user_id &&
       link.provider_id === link.line_user_id,
@@ -68,11 +68,17 @@ export function createLineExchangeHandler(dependencies: {
   return async function handleLineExchange(request: Request): Promise<Response> {
     const requestUrl = new URL(request.url);
     const code = requestUrl.searchParams.get('code');
+    const oauthError = requestUrl.searchParams.get('error');
+
+    if (oauthError) {
+      return Response.json({ error: 'line_oauth_callback_error' }, { status: 401 });
+    }
+
     const client = await dependencies.createClient();
 
     if (!code) {
       const { data, error } = await client.auth.signInWithOAuth({
-        provider: 'custom:line',
+        provider: 'custom:line-oauth',
         options: {
           redirectTo: dependencies.callbackUrl,
           scopes: 'openid profile',

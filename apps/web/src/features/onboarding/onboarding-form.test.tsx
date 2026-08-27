@@ -88,7 +88,7 @@ function createAuthClient(linkOverride: Partial<TrustedLineLink> = {}): AuthClie
   const link: TrustedLineLink = {
     user_id: APP_USER_ID,
     auth_user_id: AUTH_USER_ID,
-    provider: 'custom:line',
+    provider: 'custom:line-oauth',
     provider_id: VERIFIED_LINE_SUBJECT,
     line_user_id: VERIFIED_LINE_SUBJECT,
     ...linkOverride,
@@ -104,8 +104,8 @@ function createAuthClient(linkOverride: Partial<TrustedLineLink> = {}): AuthClie
   };
 }
 
-describe('LINE Custom OIDC exchange', () => {
-  it('starts redirect login with custom:line and openid/profile scopes', async () => {
+describe('LINE Custom OAuth2 exchange', () => {
+  it('starts redirect login with custom:line-oauth and openid/profile scopes', async () => {
     const route = await loadModule('../../../app/api/auth/line/exchange/route');
     const createLineExchangeHandler = requireFunction<CreateLineExchangeHandler>(
       route,
@@ -120,7 +120,7 @@ describe('LINE Custom OIDC exchange', () => {
     const response = await handler(new Request(CALLBACK_URL));
 
     expect(client.auth.signInWithOAuth).toHaveBeenCalledWith({
-      provider: 'custom:line',
+      provider: 'custom:line-oauth',
       options: {
         redirectTo: CALLBACK_URL,
         scopes: 'openid profile',
@@ -130,7 +130,7 @@ describe('LINE Custom OIDC exchange', () => {
     expect(response.headers.get('location')).toBe(OAUTH_URL);
   });
 
-  it('accepts callback only after a real Supabase user session and trusted custom:line link agree', async () => {
+  it('accepts callback only after a real Supabase user session and trusted custom:line-oauth link agree', async () => {
     const route = await loadModule('../../../app/api/auth/line/exchange/route');
     const createLineExchangeHandler = requireFunction<CreateLineExchangeHandler>(
       route,
