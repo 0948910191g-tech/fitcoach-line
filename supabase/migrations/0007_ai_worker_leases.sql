@@ -146,6 +146,32 @@ begin
 end;
 $$;
 
+create or replace function public.begin_ai_job_attempt_v1(
+  p_job_id uuid,
+  p_lease_token uuid
+)
+returns integer
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+declare
+  v_now timestamptz := clock_timestamp();
+  v_attempts integer;
+begin
+  update public.ai_jobs as job
+     set attempts = job.attempts + 1,
+         updated_at = v_now
+   where job.id = p_job_id
+     and job.status = 'processing'
+     and job.lease_token = p_lease_token
+     and job.lease_expires_at > v_now
+  returning job.attempts into v_attempts;
+
+  return v_attempts;
+end;
+$$;
+
 create or replace function public.complete_ai_job_v1(
   p_job_id uuid,
   p_lease_token uuid,
@@ -162,7 +188,6 @@ declare
 begin
   update public.ai_jobs as job
      set status = 'completed',
-         attempts = job.attempts + 1,
          output_json = p_output_json,
          error_code = null,
          lease_token = null,
@@ -181,12 +206,71 @@ begin
 end;
 $$;
 
+create or replace function public.fail_ai_job_attempt_v1(
+  p_job_id uuid,
+  p_lease_token uuid,
+  p_outcome text,
+  p_error_code text,
+  p_next_attempt_at timestamptz
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+declare
+  v_now timestamptz := clock_timestamp();
+  v_updated integer;
+begin
+  if p_outcome not in ('retry_wait', 'failed', 'dead_letter') then
+    raise exception 'invalid worker failure outcome';
+  end if;
+
+  if p_outcome = 'retry_wait' and p_next_attempt_at is null then
+    raise exception 'retry_wait requires next attempt time';
+  end if;
+
+  update public.ai_jobs as job
+     set status = p_outcome,
+         error_code = p_error_code,
+         lease_token = null,
+         lease_owner = null,
+         lease_expires_at = null,
+         next_attempt_at = case
+           when p_outcome = 'retry_wait' then p_next_attempt_at
+           else null
+         end,
+         finished_at = case
+           when p_outcome = 'retry_wait' then null
+           else v_now
+         end,
+         updated_at = v_now
+   where job.id = p_job_id
+     and job.status = 'processing'
+     and job.lease_token = p_lease_token
+     and job.lease_expires_at > v_now;
+
+  get diagnostics v_updated = row_count;
+  return v_updated = 1;
+end;
+$$;
+
 revoke all on function public.claim_ai_job_v1(text, integer, integer, integer)
   from public, anon, authenticated;
 grant execute on function public.claim_ai_job_v1(text, integer, integer, integer)
   to service_role;
 
+revoke all on function public.begin_ai_job_attempt_v1(uuid, uuid)
+  from public, anon, authenticated;
+grant execute on function public.begin_ai_job_attempt_v1(uuid, uuid)
+  to service_role;
+
 revoke all on function public.complete_ai_job_v1(uuid, uuid, jsonb)
   from public, anon, authenticated;
 grant execute on function public.complete_ai_job_v1(uuid, uuid, jsonb)
+  to service_role;
+
+revoke all on function public.fail_ai_job_attempt_v1(uuid, uuid, text, text, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.fail_ai_job_attempt_v1(uuid, uuid, text, text, timestamptz)
   to service_role;
