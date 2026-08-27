@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createSupabaseAIJobStore, processNextAIJob } from './process-job';
 
 type RuntimeProcess = { env: Readonly<Record<string, string | undefined>> };
 const runtimeProcess = (globalThis as typeof globalThis & { process?: RuntimeProcess }).process;
@@ -322,5 +323,32 @@ describeIntegration('durable AI worker lease', () => {
     expect(stored.next_attempt_at).toBeNull();
     expect(stored.finished_at).toBeTruthy();
     expect(await claim(`permanent-retry-${randomUUID()}`)).toBeNull();
+  });
+
+  it('runs the production worker store and completion path against disposable Supabase', async () => {
+    const userId = await createSyntheticUser();
+    const jobId = await createQueuedJob(userId, 'production-store');
+    const store = createSupabaseAIJobStore({
+      url: env('SUPABASE_TEST_URL'),
+      serviceRoleKey: env('SUPABASE_TEST_SERVICE_ROLE_KEY'),
+    });
+
+    const result = await processNextAIJob({
+      workerId: `runtime-${randomUUID()}`,
+      store,
+      execute: async (job, signal) => {
+        expect(job.jobId).toBe(jobId);
+        expect(signal.aborted).toBe(false);
+        return { marker: 'runtime-confirmed' };
+      },
+    });
+
+    expect(result).toMatchObject({ status: 'completed', jobId, attempt: 1, quotaUsed: 1 });
+    const stored = await getJob(jobId);
+    expect(stored.status).toBe('completed');
+    expect(stored.attempts).toBe(1);
+    expect(stored.output_json).toEqual({ marker: 'runtime-confirmed' });
+    expect(stored.lease_token).toBeNull();
+    expect(stored.finished_at).toBeTruthy();
   });
 });
