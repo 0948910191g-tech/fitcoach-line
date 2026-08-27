@@ -8,5 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "build": "tsc"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
   }
 }
