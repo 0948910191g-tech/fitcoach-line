@@ -6,9 +6,9 @@ import {
   type CoachReply,
   type DailyReport,
   type WeeklyReport,
-} from './schemas/coach';
-import { foodAnalysisSchema, type FoodAnalysis } from './schemas/food';
-import { workoutAnalysisSchema, type WorkoutAnalysis } from './schemas/workout';
+} from './schemas/coach.js';
+import { foodAnalysisSchema, type FoodAnalysis } from './schemas/food.js';
+import { workoutAnalysisSchema, type WorkoutAnalysis } from './schemas/workout.js';
 import type {
   AIProvider,
   AnalyzeFoodInput,
@@ -16,7 +16,7 @@ import type {
   DailyReportInput,
   ParseWorkoutInput,
   WeeklyReportInput,
-} from './provider';
+} from './provider.js';
 
 export type AIOutputValidationCode = 'invalid_json' | 'schema_mismatch';
 
