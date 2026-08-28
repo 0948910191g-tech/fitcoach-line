@@ -1,6 +1,6 @@
-import type { CoachReply, DailyReport, WeeklyReport } from './schemas/coach';
-import type { FoodAnalysis } from './schemas/food';
-import type { WorkoutAnalysis } from './schemas/workout';
+import type { CoachReply, DailyReport, WeeklyReport } from './schemas/coach.js';
+import type { FoodAnalysis } from './schemas/food.js';
+import type { WorkoutAnalysis } from './schemas/workout.js';
 
 export interface ProviderImageInput {
   storagePath: string;
