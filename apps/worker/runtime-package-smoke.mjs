@@ -27,6 +27,12 @@ runModuleProbe(`
   if (typeof ai.createAIRouter !== 'function') {
     throw new Error('createAIRouter is not exported from @fitcoach/ai');
   }
+  if (typeof ai.createCodexProvider !== 'function') {
+    throw new Error('createCodexProvider is not exported from @fitcoach/ai');
+  }
+  if (typeof ai.createOfficialCodexRuntime !== 'function') {
+    throw new Error('createOfficialCodexRuntime is not exported from @fitcoach/ai');
+  }
 `);
 
 runModuleProbe(`
