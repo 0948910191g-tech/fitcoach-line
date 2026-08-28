@@ -43,18 +43,23 @@ export interface AIWorker {
   runOnce(): Promise<ProcessAIJobResult>;
 }
 
-async function executeValidated(router: AIRouter, execution: AIJobExecution): Promise<unknown> {
+async function executeValidated(
+  router: AIRouter,
+  execution: AIJobExecution,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const context = { signal };
   switch (execution.method) {
     case 'analyzeFood':
-      return router.analyzeFood(execution.input);
+      return router.analyzeFood(execution.input, context);
     case 'parseWorkout':
-      return router.parseWorkout(execution.input);
+      return router.parseWorkout(execution.input, context);
     case 'generateCoachReply':
-      return router.generateCoachReply(execution.input);
+      return router.generateCoachReply(execution.input, context);
     case 'generateDailyReport':
-      return router.generateDailyReport(execution.input);
+      return router.generateDailyReport(execution.input, context);
     case 'generateWeeklyReport':
-      return router.generateWeeklyReport(execution.input);
+      return router.generateWeeklyReport(execution.input, context);
   }
 }
 
@@ -68,7 +73,7 @@ export function createAIWorker(options: CreateAIWorkerOptions): AIWorker {
         store: options.store,
         execute: async (job, signal) => {
           const execution = await options.resolveExecution(job, signal);
-          return executeValidated(router, execution);
+          return executeValidated(router, execution, signal);
         },
         ...(options.policy === undefined ? {} : { policy: options.policy }),
         ...(options.now === undefined ? {} : { now: options.now }),
