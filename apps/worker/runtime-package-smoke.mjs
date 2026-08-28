@@ -1,3 +1,4 @@
+// Execute after compiling both packages so this verifies Node runtime resolution, not TypeScript source resolution.
 import { readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
