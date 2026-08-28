@@ -1,0 +1,42 @@
+name: Export Local Dependencies
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package local runtime
+        run: |
+          tar -czf local-runtime.tar.gz node_modules apps/*/node_modules packages/*/node_modules "$(dirname "$PNPM_HOME")"
+
+      - name: Upload local runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitcoach-local-runtime
+          path: local-runtime.tar.gz
+          compression-level: 0
+          retention-days: 1
