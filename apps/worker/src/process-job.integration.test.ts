@@ -313,6 +313,38 @@ describeIntegration('durable AI worker lease', () => {
     ).toBeNull();
   });
 
+  it('does not let a quota-blocked new job starve an already-counted due retry behind it', async () => {
+    const userId = await createSyntheticUser();
+    const retryJobId = await createQueuedJob(userId, 'quota-retry');
+    const first = await claim(`starvation-a-${randomUUID()}`, { dailyLimit: 1 });
+    expect(first?.job_id).toBe(retryJobId);
+    expect(first?.quota_used).toBe(1);
+    if (!first) throw new Error('Expected initial quota-counted claim');
+
+    expect(await beginAttempt(retryJobId, first.lease_token)).toBe(1);
+    const retryDueAt = new Date(Date.now() + 250).toISOString();
+    expect(
+      await finishFailure(
+        retryJobId,
+        first.lease_token,
+        'retry_wait',
+        'provider_temporary_failure',
+        retryDueAt,
+      ),
+    ).toBe(true);
+
+    const blockedJobId = await createQueuedJob(userId, 'quota-new-blocked');
+    await sleep(300);
+
+    const retry = await claim(`starvation-b-${randomUUID()}`, { dailyLimit: 1 });
+    expect(retry?.job_id).toBe(retryJobId);
+    expect(retry?.quota_used).toBe(1);
+
+    const blocked = await getJob(blockedJobId);
+    expect(blocked.status).toBe('queued');
+    expect(blocked.quota_counted_at).toBeNull();
+  });
+
   it('counts provider attempts before execution and persists exponential retry states through attempt three', async () => {
     const userId = await createSyntheticUser();
     const jobId = await createQueuedJob(userId, 'retry-durable');
