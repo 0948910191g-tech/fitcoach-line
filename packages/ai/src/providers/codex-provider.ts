@@ -275,6 +275,9 @@ export class CodexProvider implements AIProvider {
     }
 
     const workspace = await this.createWorkspace();
+    let result: T | undefined;
+    let executionError: unknown;
+
     try {
       const imagePath =
         options.image === undefined ? undefined : await this.materializeImage(options.image, workspace);
@@ -298,10 +301,21 @@ export class CodexProvider implements AIProvider {
         throw classifyRuntimeError(error, signal);
       }
 
-      return parseProviderJson<T>(finalResponse);
-    } finally {
-      await this.cleanupWorkspace(workspace);
+      result = parseProviderJson<T>(finalResponse);
+    } catch (error) {
+      executionError = error;
     }
+
+    try {
+      await this.cleanupWorkspace(workspace);
+    } catch {
+      if (executionError === undefined) {
+        throw temporaryError('provider_cleanup_failure', 'Codex workspace cleanup failed');
+      }
+    }
+
+    if (executionError !== undefined) throw executionError;
+    return result as T;
   }
 }
 
