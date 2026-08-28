@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createAIWorker } from './index';
 import { createSupabaseAIJobStore, processNextAIJob } from './process-job';
 
 type RuntimeProcess = { env: Readonly<Record<string, string | undefined>> };
@@ -12,6 +13,41 @@ const requiredEnv = [
 ] as const;
 const hasIntegrationEnv = requiredEnv.every((key) => Boolean(runtimeEnv[key]));
 const describeIntegration = hasIntegrationEnv ? describe : describe.skip;
+
+const VALID_FOOD_RESULT = {
+  confidence: 0.93,
+  assumptions: ['synthetic restart fixture'],
+  normalizedUnits: {
+    mass: 'g',
+    energy: 'kcal',
+    protein: 'g',
+    carbs: 'g',
+    fat: 'g',
+    sugar: 'g',
+    sodium: 'mg',
+  },
+  items: [
+    {
+      name: 'Restart meal',
+      quantity: { value: 180, unit: 'g' },
+      components: [],
+      caloriesKcal: 390,
+      proteinG: 30,
+      carbsG: 40,
+      fatG: 12,
+      sugarG: 4,
+      sodiumMg: 650,
+    },
+  ],
+  totals: {
+    caloriesKcal: 390,
+    proteinG: 30,
+    carbsG: 40,
+    fatG: 12,
+    sugarG: 4,
+    sodiumMg: 650,
+  },
+} as const;
 
 function env(name: (typeof requiredEnv)[number]): string {
   const value = runtimeEnv[name];
@@ -152,6 +188,28 @@ async function getJob(jobId: string): Promise<Record<string, unknown>> {
   const row = result.body[0];
   if (!row) throw new Error(`Job ${jobId} not found`);
   return row;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function fakeProvider(foodOutput: () => Promise<unknown>) {
+  const unexpected = async () => {
+    throw new Error('unexpected provider method');
+  };
+
+  return {
+    analyzeFood: foodOutput,
+    parseWorkout: unexpected,
+    generateCoachReply: unexpected,
+    generateDailyReport: unexpected,
+    generateWeeklyReport: unexpected,
+  };
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -350,5 +408,71 @@ describeIntegration('durable AI worker lease', () => {
     expect(stored.output_json).toEqual({ marker: 'runtime-confirmed' });
     expect(stored.lease_token).toBeNull();
     expect(stored.finished_at).toBeTruthy();
+  });
+
+  it('recovers an in-flight process-job after lease expiry without double quota and fences the stale worker', async () => {
+    const userId = await createSyntheticUser();
+    const jobId = await createQueuedJob(userId, 'full-restart');
+    const store = createSupabaseAIJobStore({
+      url: env('SUPABASE_TEST_URL'),
+      serviceRoleKey: env('SUPABASE_TEST_SERVICE_ROLE_KEY'),
+    });
+    const firstProviderStarted = deferred<void>();
+    const releaseFirstProvider = deferred<unknown>();
+    const resolveExecution = async () => ({
+      method: 'analyzeFood' as const,
+      input: { text: 'synthetic restart meal', locale: 'th-TH' },
+    });
+    const policy = {
+      dailyLimit: 50,
+      warningAt: 40,
+      concurrencyLimit: 1,
+      timeoutMs: 10_000,
+      maxProviderAttempts: 3,
+      retryBaseDelayMs: 1,
+      leaseSeconds: 1,
+    };
+
+    const workerA = createAIWorker({
+      workerId: `restart-a-${randomUUID()}`,
+      store,
+      provider: fakeProvider(async () => {
+        firstProviderStarted.resolve();
+        return releaseFirstProvider.promise;
+      }),
+      resolveExecution,
+      policy,
+    });
+
+    const firstRunPromise = workerA.runOnce();
+    await firstProviderStarted.promise;
+    await sleep(1_150);
+
+    const workerB = createAIWorker({
+      workerId: `restart-b-${randomUUID()}`,
+      store,
+      provider: fakeProvider(async () => VALID_FOOD_RESULT),
+      resolveExecution,
+      policy: { ...policy, leaseSeconds: 30 },
+    });
+
+    const secondResult = await workerB.runOnce();
+    expect(secondResult).toMatchObject({
+      status: 'completed',
+      jobId,
+      attempt: 2,
+      quotaUsed: 1,
+    });
+
+    releaseFirstProvider.resolve(VALID_FOOD_RESULT);
+    const firstResult = await firstRunPromise;
+    expect(firstResult).toMatchObject({ status: 'stale_lease', jobId, attempt: 1 });
+
+    const stored = await getJob(jobId);
+    expect(stored.status).toBe('completed');
+    expect(stored.attempts).toBe(2);
+    expect(stored.output_json).toEqual(VALID_FOOD_RESULT);
+    expect(stored.quota_counted_at).toBeTruthy();
+    expect(stored.lease_token).toBeNull();
   });
 });
