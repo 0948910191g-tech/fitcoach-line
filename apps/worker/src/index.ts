@@ -7,7 +7,10 @@ import {
   type WorkerPolicy,
 } from './process-job';
 
-const AI_ROUTER_MODULE_PATH = '../../../packages/ai/src/router.ts';
+const AI_ROUTER_MODULE_URL = new URL(
+  '../../../packages/ai/src/router.ts',
+  import.meta.url,
+).href;
 
 export interface WorkerAIProvider {
   analyzeFood(input: unknown): Promise<unknown>;
@@ -54,7 +57,9 @@ export interface AIWorker {
 }
 
 async function loadValidatedRouter(provider: WorkerAIProvider): Promise<ValidatedAIRouter> {
-  const module = (await import(AI_ROUTER_MODULE_PATH)) as Partial<AIRouterModule>;
+  const module = (await import(
+    /* @vite-ignore */ AI_ROUTER_MODULE_URL
+  )) as Partial<AIRouterModule>;
   if (typeof module.createAIRouter !== 'function') {
     throw new Error('AI router module does not expose createAIRouter');
   }
