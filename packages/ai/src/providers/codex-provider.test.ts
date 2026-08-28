@@ -322,6 +322,10 @@ describe('CodexProvider phase 2 contract', () => {
   it('passes the worker-owned AbortSignal into the Codex runtime and classifies abort safely', async () => {
     const controller = new AbortController();
     let receivedSignal: AbortSignal | undefined;
+    let markRuntimeStarted: (() => void) | undefined;
+    const runtimeStarted = new Promise<void>((resolveStarted) => {
+      markRuntimeStarted = resolveStarted;
+    });
     const subject = await loadSubject();
     expect(subject.CodexRuntimeError).toBeTypeOf('function');
     if (!subject.CodexRuntimeError) throw new Error('CodexRuntimeError is not implemented');
@@ -329,7 +333,12 @@ describe('CodexProvider phase 2 contract', () => {
     const runtime: Runtime = {
       async run(request) {
         receivedSignal = request.signal;
+        markRuntimeStarted?.();
         await new Promise<void>((_resolve, reject) => {
+          if (request.signal?.aborted) {
+            reject(new subject.CodexRuntimeError!('aborted', 'runtime aborted'));
+            return;
+          }
           request.signal?.addEventListener(
             'abort',
             () => reject(new subject.CodexRuntimeError!('aborted', 'runtime aborted')),
@@ -341,6 +350,7 @@ describe('CodexProvider phase 2 contract', () => {
     };
     const { provider } = await createProvider(runtime);
     const promise = provider.analyzeFood({ text: 'ข้าว' }, { signal: controller.signal });
+    await runtimeStarted;
     controller.abort();
 
     const error = await promise.catch((value: unknown) => value);
