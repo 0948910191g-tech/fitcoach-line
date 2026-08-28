@@ -1,43 +1,30 @@
 import {
+  createAIRouter,
+  type AIProvider,
+  type AIRouter,
+  type AnalyzeFoodInput,
+  type CoachInput,
+  type DailyReportInput,
+  type ParseWorkoutInput,
+  type WeeklyReportInput,
+} from '@fitcoach/ai';
+import {
   processNextAIJob,
   type AIJobStore,
   type ClaimedAIJob,
   type ProcessAIJobResult,
   type ProcessNextAIJobOptions,
   type WorkerPolicy,
-} from './process-job';
+} from './process-job.js';
 
-const AI_ROUTER_MODULE_URL = new URL(
-  '../../../packages/ai/src/router.ts',
-  import.meta.url,
-).href;
-
-export interface WorkerAIProvider {
-  analyzeFood(input: unknown): Promise<unknown>;
-  parseWorkout(input: unknown): Promise<unknown>;
-  generateCoachReply(input: unknown): Promise<unknown>;
-  generateDailyReport(input: unknown): Promise<unknown>;
-  generateWeeklyReport(input: unknown): Promise<unknown>;
-}
+export type WorkerAIProvider = AIProvider;
 
 export type AIJobExecution =
-  | { method: 'analyzeFood'; input: unknown }
-  | { method: 'parseWorkout'; input: unknown }
-  | { method: 'generateCoachReply'; input: unknown }
-  | { method: 'generateDailyReport'; input: unknown }
-  | { method: 'generateWeeklyReport'; input: unknown };
-
-interface ValidatedAIRouter {
-  analyzeFood(input: unknown): Promise<unknown>;
-  parseWorkout(input: unknown): Promise<unknown>;
-  generateCoachReply(input: unknown): Promise<unknown>;
-  generateDailyReport(input: unknown): Promise<unknown>;
-  generateWeeklyReport(input: unknown): Promise<unknown>;
-}
-
-interface AIRouterModule {
-  createAIRouter(provider: WorkerAIProvider): ValidatedAIRouter;
-}
+  | { method: 'analyzeFood'; input: AnalyzeFoodInput }
+  | { method: 'parseWorkout'; input: ParseWorkoutInput }
+  | { method: 'generateCoachReply'; input: CoachInput }
+  | { method: 'generateDailyReport'; input: DailyReportInput }
+  | { method: 'generateWeeklyReport'; input: WeeklyReportInput };
 
 export interface CreateAIWorkerOptions {
   workerId: string;
@@ -56,40 +43,28 @@ export interface AIWorker {
   runOnce(): Promise<ProcessAIJobResult>;
 }
 
-async function loadValidatedRouter(provider: WorkerAIProvider): Promise<ValidatedAIRouter> {
-  const module = (await import(
-    /* @vite-ignore */ AI_ROUTER_MODULE_URL
-  )) as Partial<AIRouterModule>;
-  if (typeof module.createAIRouter !== 'function') {
-    throw new Error('AI router module does not expose createAIRouter');
-  }
-  return module.createAIRouter(provider);
-}
-
 async function executeValidated(
-  router: ValidatedAIRouter,
+  router: AIRouter,
   execution: AIJobExecution,
+  signal: AbortSignal,
 ): Promise<unknown> {
+  const context = { signal };
   switch (execution.method) {
     case 'analyzeFood':
-      return router.analyzeFood(execution.input);
+      return router.analyzeFood(execution.input, context);
     case 'parseWorkout':
-      return router.parseWorkout(execution.input);
+      return router.parseWorkout(execution.input, context);
     case 'generateCoachReply':
-      return router.generateCoachReply(execution.input);
+      return router.generateCoachReply(execution.input, context);
     case 'generateDailyReport':
-      return router.generateDailyReport(execution.input);
+      return router.generateDailyReport(execution.input, context);
     case 'generateWeeklyReport':
-      return router.generateWeeklyReport(execution.input);
+      return router.generateWeeklyReport(execution.input, context);
   }
 }
 
 export function createAIWorker(options: CreateAIWorkerOptions): AIWorker {
-  let routerPromise: Promise<ValidatedAIRouter> | undefined;
-  const getRouter = () => {
-    routerPromise ??= loadValidatedRouter(options.provider);
-    return routerPromise;
-  };
+  const router = createAIRouter(options.provider);
 
   return {
     async runOnce() {
@@ -98,8 +73,7 @@ export function createAIWorker(options: CreateAIWorkerOptions): AIWorker {
         store: options.store,
         execute: async (job, signal) => {
           const execution = await options.resolveExecution(job, signal);
-          const router = await getRouter();
-          return executeValidated(router, execution);
+          return executeValidated(router, execution, signal);
         },
         ...(options.policy === undefined ? {} : { policy: options.policy }),
         ...(options.now === undefined ? {} : { now: options.now }),
@@ -117,7 +91,7 @@ export {
   OWNER_ALPHA_WORKER_POLICY,
   createSupabaseAIJobStore,
   processNextAIJob,
-} from './process-job';
+} from './process-job.js';
 export type {
   AIJobFailure,
   AIJobFailureOutcome,
@@ -126,4 +100,4 @@ export type {
   ProcessAIJobResult,
   ProcessNextAIJobOptions,
   WorkerPolicy,
-} from './process-job';
+} from './process-job.js';

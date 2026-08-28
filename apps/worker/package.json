@@ -6,7 +6,11 @@
   "scripts": {
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "pnpm --filter @fitcoach/ai build && vitest run --passWithNoTests && pnpm test:runtime-package",
+    "test:runtime-package": "pnpm build && node runtime-package-smoke.mjs",
     "build": "tsc"
+  },
+  "dependencies": {
+    "@fitcoach/ai": "workspace:*"
   }
 }

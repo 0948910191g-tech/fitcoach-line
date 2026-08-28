@@ -6,17 +6,18 @@ import {
   type CoachReply,
   type DailyReport,
   type WeeklyReport,
-} from './schemas/coach';
-import { foodAnalysisSchema, type FoodAnalysis } from './schemas/food';
-import { workoutAnalysisSchema, type WorkoutAnalysis } from './schemas/workout';
+} from './schemas/coach.js';
+import { foodAnalysisSchema, type FoodAnalysis } from './schemas/food.js';
+import { workoutAnalysisSchema, type WorkoutAnalysis } from './schemas/workout.js';
 import type {
   AIProvider,
+  AIProviderExecutionContext,
   AnalyzeFoodInput,
   CoachInput,
   DailyReportInput,
   ParseWorkoutInput,
   WeeklyReportInput,
-} from './provider';
+} from './provider.js';
 
 export type AIOutputValidationCode = 'invalid_json' | 'schema_mismatch';
 
@@ -59,29 +60,38 @@ function parseValidatedOutput<T>(raw: unknown, schema: ZodType<T>): T {
 }
 
 export interface AIRouter {
-  analyzeFood(input: AnalyzeFoodInput): Promise<FoodAnalysis>;
-  parseWorkout(input: ParseWorkoutInput): Promise<WorkoutAnalysis>;
-  generateCoachReply(input: CoachInput): Promise<CoachReply>;
-  generateDailyReport(input: DailyReportInput): Promise<DailyReport>;
-  generateWeeklyReport(input: WeeklyReportInput): Promise<WeeklyReport>;
+  analyzeFood(input: AnalyzeFoodInput, context?: AIProviderExecutionContext): Promise<FoodAnalysis>;
+  parseWorkout(
+    input: ParseWorkoutInput,
+    context?: AIProviderExecutionContext,
+  ): Promise<WorkoutAnalysis>;
+  generateCoachReply(input: CoachInput, context?: AIProviderExecutionContext): Promise<CoachReply>;
+  generateDailyReport(
+    input: DailyReportInput,
+    context?: AIProviderExecutionContext,
+  ): Promise<DailyReport>;
+  generateWeeklyReport(
+    input: WeeklyReportInput,
+    context?: AIProviderExecutionContext,
+  ): Promise<WeeklyReport>;
 }
 
 export function createAIRouter(provider: AIProvider): AIRouter {
   return {
-    async analyzeFood(input) {
-      return parseValidatedOutput(await provider.analyzeFood(input), foodAnalysisSchema);
+    async analyzeFood(input, context) {
+      return parseValidatedOutput(await provider.analyzeFood(input, context), foodAnalysisSchema);
     },
-    async parseWorkout(input) {
-      return parseValidatedOutput(await provider.parseWorkout(input), workoutAnalysisSchema);
+    async parseWorkout(input, context) {
+      return parseValidatedOutput(await provider.parseWorkout(input, context), workoutAnalysisSchema);
     },
-    async generateCoachReply(input) {
-      return parseValidatedOutput(await provider.generateCoachReply(input), coachReplySchema);
+    async generateCoachReply(input, context) {
+      return parseValidatedOutput(await provider.generateCoachReply(input, context), coachReplySchema);
     },
-    async generateDailyReport(input) {
-      return parseValidatedOutput(await provider.generateDailyReport(input), dailyReportSchema);
+    async generateDailyReport(input, context) {
+      return parseValidatedOutput(await provider.generateDailyReport(input, context), dailyReportSchema);
     },
-    async generateWeeklyReport(input) {
-      return parseValidatedOutput(await provider.generateWeeklyReport(input), weeklyReportSchema);
+    async generateWeeklyReport(input, context) {
+      return parseValidatedOutput(await provider.generateWeeklyReport(input, context), weeklyReportSchema);
     },
   };
 }

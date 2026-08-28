@@ -154,4 +154,42 @@ describe('worker entrypoint wiring', () => {
       nextAttemptAt: null,
     });
   });
+
+  it('passes the worker-owned AbortSignal through AIRouter into the provider', async () => {
+    const subject = await loadSubject();
+    if (!subject) return;
+    const { store } = createStore();
+    let resolveSignal: AbortSignal | undefined;
+    let providerSignal: AbortSignal | undefined;
+    const unexpected = async () => {
+      throw new Error('unexpected provider method');
+    };
+
+    const worker = subject.createAIWorker({
+      workerId: 'entrypoint-signal',
+      store,
+      provider: {
+        analyzeFood: async (_input: unknown, context?: { signal?: AbortSignal }) => {
+          providerSignal = context?.signal;
+          return VALID_FOOD_RESULT;
+        },
+        parseWorkout: unexpected,
+        generateCoachReply: unexpected,
+        generateDailyReport: unexpected,
+        generateWeeklyReport: unexpected,
+      },
+      resolveExecution: async (_job: unknown, signal: AbortSignal) => {
+        resolveSignal = signal;
+        return {
+          method: 'analyzeFood',
+          input: { text: 'synthetic meal', locale: 'th-TH' },
+        };
+      },
+    });
+
+    await worker.runOnce();
+
+    expect(resolveSignal).toBeInstanceOf(AbortSignal);
+    expect(providerSignal).toBe(resolveSignal);
+  });
 });

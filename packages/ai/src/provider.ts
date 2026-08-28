@@ -1,6 +1,6 @@
-import type { CoachReply, DailyReport, WeeklyReport } from './schemas/coach';
-import type { FoodAnalysis } from './schemas/food';
-import type { WorkoutAnalysis } from './schemas/workout';
+import type { CoachReply, DailyReport, WeeklyReport } from './schemas/coach.js';
+import type { FoodAnalysis } from './schemas/food.js';
+import type { WorkoutAnalysis } from './schemas/workout.js';
 
 export interface ProviderImageInput {
   storagePath: string;
@@ -38,17 +38,36 @@ export interface WeeklyReportInput {
   locale?: 'th-TH';
 }
 
+export interface AIProviderExecutionContext {
+  signal?: AbortSignal;
+}
+
 /**
  * Providers expose structured results at the TypeScript boundary. Their runtime
  * output is still untrusted and must pass createAIRouter() Zod validation before
  * feature/business code consumes it.
  */
 export interface AIProvider {
-  analyzeFood(input: AnalyzeFoodInput): Promise<FoodAnalysis>;
-  parseWorkout(input: ParseWorkoutInput): Promise<WorkoutAnalysis>;
-  generateCoachReply(input: CoachInput): Promise<CoachReply>;
-  generateDailyReport(input: DailyReportInput): Promise<DailyReport>;
-  generateWeeklyReport(input: WeeklyReportInput): Promise<WeeklyReport>;
+  analyzeFood(
+    input: AnalyzeFoodInput,
+    context?: AIProviderExecutionContext,
+  ): Promise<FoodAnalysis>;
+  parseWorkout(
+    input: ParseWorkoutInput,
+    context?: AIProviderExecutionContext,
+  ): Promise<WorkoutAnalysis>;
+  generateCoachReply(
+    input: CoachInput,
+    context?: AIProviderExecutionContext,
+  ): Promise<CoachReply>;
+  generateDailyReport(
+    input: DailyReportInput,
+    context?: AIProviderExecutionContext,
+  ): Promise<DailyReport>;
+  generateWeeklyReport(
+    input: WeeklyReportInput,
+    context?: AIProviderExecutionContext,
+  ): Promise<WeeklyReport>;
 }
 
 export interface AIProviderErrorOptions {

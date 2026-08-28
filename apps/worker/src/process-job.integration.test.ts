@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { FoodAnalysis } from '@fitcoach/ai';
 import { createAIWorker } from './index';
 import { createSupabaseAIJobStore, processNextAIJob } from './process-job';
 
@@ -47,7 +48,7 @@ const VALID_FOOD_RESULT = {
     sugarG: 4,
     sodiumMg: 650,
   },
-} as const;
+} satisfies FoodAnalysis;
 
 function env(name: (typeof requiredEnv)[number]): string {
   const value = runtimeEnv[name];
@@ -198,7 +199,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function fakeProvider(foodOutput: () => Promise<unknown>) {
+function fakeProvider(foodOutput: () => Promise<FoodAnalysis>) {
   const unexpected = async () => {
     throw new Error('unexpected provider method');
   };
@@ -450,10 +451,10 @@ describeIntegration('durable AI worker lease', () => {
       serviceRoleKey: env('SUPABASE_TEST_SERVICE_ROLE_KEY'),
     });
     const firstProviderStarted = deferred<void>();
-    const releaseFirstProvider = deferred<unknown>();
+    const releaseFirstProvider = deferred<FoodAnalysis>();
     const resolveExecution = async () => ({
       method: 'analyzeFood' as const,
-      input: { text: 'synthetic restart meal', locale: 'th-TH' },
+      input: { text: 'synthetic restart meal', locale: 'th-TH' as const },
     });
     const policy = {
       dailyLimit: 50,
