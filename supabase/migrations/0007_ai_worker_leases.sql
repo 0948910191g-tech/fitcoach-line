@@ -61,88 +61,88 @@ begin
 
   v_now := clock_timestamp();
 
-  select j.*
-    into v_job
-    from public.ai_jobs as j
-   where (
-     (j.status in ('queued', 'retry_wait') and coalesce(j.next_attempt_at, j.created_at) <= v_now)
-     or
-     (j.status = 'processing' and j.lease_expires_at is not null and j.lease_expires_at <= v_now)
-   )
-   order by coalesce(j.next_attempt_at, j.created_at), j.created_at, j.id
-   for update skip locked
-   limit 1;
+  for v_job in
+    select j.*
+      from public.ai_jobs as j
+     where (
+       (j.status in ('queued', 'retry_wait') and coalesce(j.next_attempt_at, j.created_at) <= v_now)
+       or
+       (j.status = 'processing' and j.lease_expires_at is not null and j.lease_expires_at <= v_now)
+     )
+     order by coalesce(j.next_attempt_at, j.created_at), j.created_at, j.id
+     for update skip locked
+  loop
+    -- Serialize claims for one application user. The job row lock prevents two
+    -- workers from claiming the same job; this user-row lock also prevents two
+    -- different jobs for the same user from bypassing concurrency/quota checks.
+    perform 1
+      from public.users as u
+     where u.id = v_job.user_id
+     for update;
 
-  if not found then
-    return;
-  end if;
-
-  -- Serialize claims for one application user. The job row lock prevents two
-  -- workers from claiming the same job; this user-row lock also prevents two
-  -- different jobs for the same user from bypassing concurrency/quota checks.
-  perform 1
-    from public.users as u
-   where u.id = v_job.user_id
-   for update;
-
-  if not found then
-    return;
-  end if;
-
-  v_now := clock_timestamp();
-
-  select count(*)::integer
-    into v_active_leases
-    from public.ai_jobs as active_job
-   where active_job.user_id = v_job.user_id
-     and active_job.id <> v_job.id
-     and active_job.status = 'processing'
-     and active_job.lease_expires_at > v_now;
-
-  if v_active_leases >= p_concurrency_limit then
-    return;
-  end if;
-
-  select count(*)::integer
-    into v_quota_used
-    from public.ai_jobs as quota_job
-   where quota_job.user_id = v_job.user_id
-     and quota_job.quota_counted_at is not null
-     and (quota_job.quota_counted_at at time zone 'Asia/Bangkok')::date =
-         (v_now at time zone 'Asia/Bangkok')::date;
-
-  if v_job.quota_counted_at is null then
-    if v_quota_used >= p_daily_limit then
-      return;
+    if not found then
+      continue;
     end if;
 
-    v_quota_used := v_quota_used + 1;
-  end if;
+    v_now := clock_timestamp();
 
-  v_token := gen_random_uuid();
+    select count(*)::integer
+      into v_active_leases
+      from public.ai_jobs as active_job
+     where active_job.user_id = v_job.user_id
+       and active_job.id <> v_job.id
+       and active_job.status = 'processing'
+       and active_job.lease_expires_at > v_now;
 
-  update public.ai_jobs as claimed_job
-     set status = 'processing',
-         lease_token = v_token,
-         lease_owner = p_worker_id,
-         lease_expires_at = v_now + make_interval(secs => p_lease_seconds),
-         next_attempt_at = null,
-         quota_counted_at = coalesce(claimed_job.quota_counted_at, v_now),
-         updated_at = v_now
-   where claimed_job.id = v_job.id;
+    if v_active_leases >= p_concurrency_limit then
+      continue;
+    end if;
 
-  return query
-  select claimed_job.id,
-         claimed_job.user_id,
-         claimed_job.task_type,
-         claimed_job.provider,
-         claimed_job.input_ref,
-         claimed_job.attempts,
-         claimed_job.lease_token,
-         claimed_job.lease_expires_at,
-         v_quota_used
-    from public.ai_jobs as claimed_job
-   where claimed_job.id = v_job.id;
+    select count(*)::integer
+      into v_quota_used
+      from public.ai_jobs as quota_job
+     where quota_job.user_id = v_job.user_id
+       and quota_job.quota_counted_at is not null
+       and (quota_job.quota_counted_at at time zone 'Asia/Bangkok')::date =
+           (v_now at time zone 'Asia/Bangkok')::date;
+
+    if v_job.quota_counted_at is null then
+      if v_quota_used >= p_daily_limit then
+        continue;
+      end if;
+
+      v_quota_used := v_quota_used + 1;
+    end if;
+
+    v_token := gen_random_uuid();
+
+    update public.ai_jobs as claimed_job
+       set status = 'processing',
+           lease_token = v_token,
+           lease_owner = p_worker_id,
+           lease_expires_at = v_now + make_interval(secs => p_lease_seconds),
+           next_attempt_at = null,
+           quota_counted_at = coalesce(claimed_job.quota_counted_at, v_now),
+           updated_at = v_now
+     where claimed_job.id = v_job.id;
+
+    return query
+    select claimed_job.id,
+           claimed_job.user_id,
+           claimed_job.task_type,
+           claimed_job.provider,
+           claimed_job.input_ref,
+           claimed_job.attempts,
+           claimed_job.lease_token,
+           claimed_job.lease_expires_at,
+           v_quota_used
+      from public.ai_jobs as claimed_job
+     where claimed_job.id = v_job.id;
+
+    return;
+  end loop;
+
+  return;
 end;
 $$;
 
