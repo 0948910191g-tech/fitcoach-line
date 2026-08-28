@@ -8,8 +8,5 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "build": "tsc"
-  },
-  "dependencies": {
-    "@fitcoach/ai": "workspace:*"
   }
 }

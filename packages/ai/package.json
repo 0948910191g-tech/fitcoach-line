@@ -3,10 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    "./provider": "./src/provider.ts",
-    "./router": "./src/router.ts"
-  },
   "scripts": {
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
