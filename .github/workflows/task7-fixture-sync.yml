@@ -1,0 +1,49 @@
+name: Task 7 Fixture Sync
+
+on:
+  push:
+    branches:
+      - feat/codex-provider
+
+permissions:
+  contents: write
+
+jobs:
+  sync-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/codex-provider
+
+      - name: Update integration fixture types
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/worker/src/process-job.integration.test.ts')
+          text = path.read_text()
+          replacements = [
+              ("import { beforeEach, describe, expect, it } from 'vitest';\n", "import { beforeEach, describe, expect, it } from 'vitest';\nimport type { FoodAnalysis } from '@fitcoach/ai';\n"),
+              ("} as const;\n\nfunction env", "} satisfies FoodAnalysis;\n\nfunction env"),
+              ("function fakeProvider(foodOutput: () => Promise<unknown>)", "function fakeProvider(foodOutput: () => Promise<FoodAnalysis>)"),
+              ("const releaseFirstProvider = deferred<unknown>();", "const releaseFirstProvider = deferred<FoodAnalysis>();"),
+              ("input: { text: 'synthetic restart meal', locale: 'th-TH' },", "input: { text: 'synthetic restart meal', locale: 'th-TH' as const },"),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected exactly one match for: {old!r}')
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
+
+      - name: Verify and commit fixture update
+        run: |
+          pnpm --version >/dev/null 2>&1 || true
+          rm .github/workflows/task7-fixture-sync.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/process-job.integration.test.ts .github/workflows/task7-fixture-sync.yml
+          git diff --cached --check
+          git commit -m "test(worker): align restart fixture with ai contract"
+          git push origin HEAD:feat/codex-provider
