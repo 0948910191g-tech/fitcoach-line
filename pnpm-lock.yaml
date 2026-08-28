@@ -58,7 +58,11 @@ importers:
         specifier: 19.2.5
         version: 19.2.5(@types/react@19.2.18)
 
-  apps/worker: {}
+  apps/worker:
+    dependencies:
+      '@fitcoach/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
 
   packages/ai:
     dependencies:
