@@ -9,5 +9,8 @@
     "test": "vitest run --passWithNoTests && pnpm test:runtime-package",
     "test:runtime-package": "pnpm --filter @fitcoach/ai build && pnpm build && node runtime-package-smoke.mjs",
     "build": "tsc"
+  },
+  "dependencies": {
+    "@fitcoach/ai": "workspace:*"
   }
 }
